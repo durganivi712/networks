@@ -1,0 +1,50 @@
+
+
+476. Number Complement
+
+int findComplement(int num) {
+    int mask = 1;
+
+    while (mask < num)
+        mask = (mask << 1) | 1;
+
+    return mask ^ num;
+}
+
+
+---
+
+338. Counting Bits
+
+int* countBits(int n, int* returnSize) {
+    *returnSize = n + 1;
+
+    int *ans = (int *)malloc((n + 1) * sizeof(int));
+    ans[0] = 0;
+
+    for (int i = 1; i <= n; i++) {
+        ans[i] = ans[i / 2] + (i % 2);
+    }
+
+    return ans;
+}
+
+
+---
+
+421. Maximum XOR of Two Numbers in an Array (Brute Force)
+
+int findMaximumXOR(int* nums, int numsSize) {
+    int max = 0;
+
+    for (int i = 0; i < numsSize; i++) {
+        for (int j = i + 1; j < numsSize; j++) {
+            int x = nums[i] ^ nums[j];
+            if (x > max)
+                max = x;
+        }
+    }
+
+    return max;
+}
+
