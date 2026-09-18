@@ -1,0 +1,665 @@
+movie_server.c
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8080
+
+struct Movie
+{
+    int id;
+    char name[50];
+    char time[20];
+    int seats;
+    int price;
+};
+
+struct Movie movies[3] =
+{
+    {1, "Leo", "10:00 AM", 50, 150},
+    {2, "GOAT", "02:00 PM", 40, 180},
+    {3, "Vettaiyan", "06:00 PM", 30, 200}
+};
+
+void send_movies(int client)
+{
+    char msg[1000] = "";
+
+    strcat(msg, "\nID\tMovie\t\tTime\t\tSeats\tPrice\n");
+
+    for (int i = 0; i < 3; i++)
+    {
+        char temp[200];
+
+        sprintf(temp, "%d\t%-15s %-12s %d\t%d\n",
+                movies[i].id,
+                movies[i].name,
+                movies[i].time,
+                movies[i].seats,
+                movies[i].price);
+
+        strcat(msg, temp);
+    }
+
+    send(client, msg, strlen(msg), 0);
+}
+
+void handle_client(int client)
+{
+    int choice;
+
+    while (1)
+    {
+        char menu[] =
+            "\n--- MOVIE TICKET SYSTEM ---\n"
+            "1. View Movies\n"
+            "2. Check Seat Availability\n"
+            "3. Book Tickets\n"
+            "4. Cancel Tickets\n"
+            "5. Display Booking Details\n"
+            "6. Exit\n"
+            "Enter choice: ";
+
+        send(client, menu, strlen(menu), 0);
+
+        recv(client, &choice, sizeof(choice), 0);
+
+        if (choice == 1)
+        {
+            send_movies(client);
+        }
+
+        else if (choice == 2)
+        {
+            int id;
+            char msg[200];
+
+            recv(client, &id, sizeof(id), 0);
+
+            if (id >= 1 && id <= 3)
+            {
+                sprintf(msg, "Available seats for %s: %d",
+                        movies[id - 1].name,
+                        movies[id - 1].seats);
+            }
+            else
+            {
+                sprintf(msg, "Invalid Movie ID");
+            }
+
+            send(client, msg, strlen(msg), 0);
+        }
+
+        else if (choice == 3)
+        {
+            int id, tickets;
+            char msg[200];
+
+            recv(client, &id, sizeof(id), 0);
+            recv(client, &tickets, sizeof(tickets), 0);
+
+            if (id >= 1 && id <= 3)
+            {
+                if (tickets <= movies[id - 1].seats)
+                {
+                    movies[id - 1].seats -= tickets;
+
+                    sprintf(msg,
+                            "Booking Successful!\nMovie: %s\nTickets: %d\nTotal Amount: %d",
+                            movies[id - 1].name,
+                            tickets,
+                            tickets * movies[id - 1].price);
+                }
+                else
+                {
+                    sprintf(msg, "Booking Failed! Not enough seats.");
+                }
+            }
+            else
+            {
+                sprintf(msg, "Invalid Movie ID");
+            }
+
+            send(client, msg, strlen(msg), 0);
+        }
+
+        else if (choice == 4)
+        {
+            int id, tickets;
+            char msg[200];
+
+            recv(client, &id, sizeof(id), 0);
+            recv(client, &tickets, sizeof(tickets), 0);
+
+            if (id >= 1 && id <= 3)
+            {
+                movies[id - 1].seats += tickets;
+
+                sprintf(msg,
+                        "Cancellation Successful!\nMovie: %s\nTickets Cancelled: %d",
+                        movies[id - 1].name,
+                        tickets);
+            }
+            else
+            {
+                sprintf(msg, "Invalid Movie ID");
+            }
+
+            send(client, msg, strlen(msg), 0);
+        }
+
+        else if (choice == 5)
+        {
+            char msg[300];
+
+            sprintf(msg,
+                    "Current Movie Details:\n"
+                    "Movie: %s\nTime: %s\nAvailable Seats: %d\nTicket Price: %d",
+                    movies[0].name,
+                    movies[0].time,
+                    movies[0].seats,
+                    movies[0].price);
+
+            send(client, msg, strlen(msg), 0);
+        }
+
+        else if (choice == 6)
+        {
+            break;
+        }
+    }
+}
+
+int main()
+{
+    int server, client;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t size;
+
+    server = socket(AF_INET, SOCK_STREAM, 0);
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    bind(server, (struct sockaddr *)&server_addr,
+         sizeof(server_addr));
+
+    listen(server, 5);
+
+    printf("Movie Server waiting...\n");
+
+    while (1)
+    {
+        size = sizeof(client_addr);
+
+        client = accept(server,
+                        (struct sockaddr *)&client_addr,
+                        &size);
+
+        printf("Client connected.\n");
+
+        handle_client(client);
+
+        close(client);
+
+        printf("Client disconnected.\n");
+    }
+
+    close(server);
+
+    return 0;
+}
+
+
+movie_client.c
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8080
+
+int main()
+{
+    int client;
+    struct sockaddr_in server_addr;
+
+    client = socket(AF_INET, SOCK_STREAM, 0);
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    connect(client,
+            (struct sockaddr *)&server_addr,
+            sizeof(server_addr));
+
+    while (1)
+    {
+        char buffer[1000];
+        int choice;
+
+        recv(client, buffer, sizeof(buffer), 0);
+
+        printf("%s", buffer);
+
+        scanf("%d", &choice);
+
+        send(client, &choice, sizeof(choice), 0);
+
+        if (choice == 6)
+            break;
+
+        if (choice == 1)
+        {
+            recv(client, buffer, sizeof(buffer), 0);
+            printf("%s\n", buffer);
+        }
+
+        else if (choice == 2)
+        {
+            int id;
+
+            printf("Enter Movie ID: ");
+            scanf("%d", &id);
+
+            send(client, &id, sizeof(id), 0);
+
+            recv(client, buffer, sizeof(buffer), 0);
+
+            printf("%s\n", buffer);
+        }
+
+        else if (choice == 3)
+        {
+            int id, tickets;
+
+            printf("Enter Movie ID: ");
+            scanf("%d", &id);
+
+            printf("Enter Number of Tickets: ");
+            scanf("%d", &tickets);
+
+            send(client, &id, sizeof(id), 0);
+            send(client, &tickets, sizeof(tickets), 0);
+
+            recv(client, buffer, sizeof(buffer), 0);
+
+            printf("%s\n", buffer);
+        }
+
+        else if (choice == 4)
+        {
+            int id, tickets;
+
+            printf("Enter Movie ID: ");
+            scanf("%d", &id);
+
+            printf("Enter Number of Tickets to Cancel: ");
+            scanf("%d", &tickets);
+
+            send(client, &id, sizeof(id), 0);
+            send(client, &tickets, sizeof(tickets), 0);
+
+            recv(client, buffer, sizeof(buffer), 0);
+
+            printf("%s\n", buffer);
+        }
+
+        else if (choice == 5)
+        {
+            recv(client, buffer, sizeof(buffer), 0);
+            printf("%s\n", buffer);
+        }
+    }
+
+    close(client);
+
+    return 0;
+}
+
+
+
+library_server.c
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8081
+
+struct Book
+{
+    int id;
+    char title[50];
+    char author[50];
+    char category[30];
+    int available;
+};
+
+struct Book books[4] =
+{
+    {1, "C Programming", "Dennis Ritchie", "Programming", 1},
+    {2, "Java", "James Gosling", "Programming", 1},
+    {3, "Computer Networks", "Andrew Tanenbaum", "Networking", 1},
+    {4, "Operating Systems", "Galvin", "OS", 1}
+};
+
+void handle_client(int client)
+{
+    int choice;
+
+    while (1)
+    {
+        char menu[] =
+            "\n--- COLLEGE LIBRARY ---\n"
+            "1. Search Book\n"
+            "2. Check Availability\n"
+            "3. Issue Book\n"
+            "4. Return Book\n"
+            "5. View Issued Books\n"
+            "6. Exit\n"
+            "Enter choice: ";
+
+        send(client, menu, strlen(menu), 0);
+
+        recv(client, &choice, sizeof(choice), 0);
+
+        if (choice == 1)
+        {
+            int id;
+            char msg[300];
+
+            recv(client, &id, sizeof(id), 0);
+
+            if (id >= 1 && id <= 4)
+            {
+                sprintf(msg,
+                        "Book ID: %d\nTitle: %s\nAuthor: %s\nCategory: %s",
+                        books[id - 1].id,
+                        books[id - 1].title,
+                        books[id - 1].author,
+                        books[id - 1].category);
+            }
+            else
+            {
+                sprintf(msg, "Book not found.");
+            }
+
+            send(client, msg, strlen(msg), 0);
+        }
+
+        else if (choice == 2)
+        {
+            int id;
+            char msg[100];
+
+            recv(client, &id, sizeof(id), 0);
+
+            if (id >= 1 && id <= 4)
+            {
+                if (books[id - 1].available == 1)
+                    sprintf(msg, "Book is Available.");
+                else
+                    sprintf(msg, "Book is Not Available.");
+            }
+            else
+            {
+                sprintf(msg, "Invalid Book ID.");
+            }
+
+            send(client, msg, strlen(msg), 0);
+        }
+
+        else if (choice == 3)
+        {
+            int id;
+            char msg[150];
+
+            recv(client, &id, sizeof(id), 0);
+
+            if (id >= 1 && id <= 4)
+            {
+                if (books[id - 1].available == 1)
+                {
+                    books[id - 1].available = 0;
+
+                    sprintf(msg,
+                            "Book Issued Successfully.\nBook: %s",
+                            books[id - 1].title);
+                }
+                else
+                {
+                    sprintf(msg, "Book is already issued.");
+                }
+            }
+            else
+            {
+                sprintf(msg, "Invalid Book ID.");
+            }
+
+            send(client, msg, strlen(msg), 0);
+        }
+
+        else if (choice == 4)
+        {
+            int id;
+            char msg[150];
+
+            recv(client, &id, sizeof(id), 0);
+
+            if (id >= 1 && id <= 4)
+            {
+                books[id - 1].available = 1;
+
+                sprintf(msg,
+                        "Book Returned Successfully.\nBook: %s",
+                        books[id - 1].title);
+            }
+            else
+            {
+                sprintf(msg, "Invalid Book ID.");
+            }
+
+            send(client, msg, strlen(msg), 0);
+        }
+
+        else if (choice == 5)
+        {
+            char msg[500] = "";
+            int found = 0;
+
+            strcat(msg, "\nIssued Books:\n");
+
+            for (int i = 0; i < 4; i++)
+            {
+                if (books[i].available == 0)
+                {
+                    char temp[100];
+
+                    sprintf(temp,
+                            "ID: %d  Title: %s  Author: %s\n",
+                            books[i].id,
+                            books[i].title,
+                            books[i].author);
+
+                    strcat(msg, temp);
+
+                    found = 1;
+                }
+            }
+
+            if (found == 0)
+                strcat(msg, "No books are currently issued.");
+
+            send(client, msg, strlen(msg), 0);
+        }
+
+        else if (choice == 6)
+        {
+            break;
+        }
+    }
+}
+
+int main()
+{
+    int server, client;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t size;
+
+    server = socket(AF_INET, SOCK_STREAM, 0);
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    bind(server,
+         (struct sockaddr *)&server_addr,
+         sizeof(server_addr));
+
+    listen(server, 5);
+
+    printf("Library Server waiting...\n");
+
+    while (1)
+    {
+        size = sizeof(client_addr);
+
+        client = accept(server,
+                        (struct sockaddr *)&client_addr,
+                        &size);
+
+        printf("Client connected.\n");
+
+        handle_client(client);
+
+        close(client);
+
+        printf("Client disconnected.\n");
+    }
+
+    close(server);
+
+    return 0;
+}
+
+
+library_client.c
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8081
+
+int main()
+{
+    int client;
+    struct sockaddr_in server_addr;
+
+    client = socket(AF_INET, SOCK_STREAM, 0);
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    connect(client,
+            (struct sockaddr *)&server_addr,
+            sizeof(server_addr));
+
+    while (1)
+    {
+        char buffer[1000];
+        int choice;
+
+        recv(client, buffer, sizeof(buffer), 0);
+
+        printf("%s", buffer);
+
+        scanf("%d", &choice);
+
+        send(client, &choice, sizeof(choice), 0);
+
+        if (choice == 6)
+            break;
+
+        if (choice == 1)
+        {
+            int id;
+
+            printf("Enter Book ID: ");
+            scanf("%d", &id);
+
+            send(client, &id, sizeof(id), 0);
+
+            recv(client, buffer, sizeof(buffer), 0);
+
+            printf("%s\n", buffer);
+        }
+
+        else if (choice == 2)
+        {
+            int id;
+
+            printf("Enter Book ID: ");
+            scanf("%d", &id);
+
+            send(client, &id, sizeof(id), 0);
+
+            recv(client, buffer, sizeof(buffer), 0);
+
+            printf("%s\n", buffer);
+        }
+
+        else if (choice == 3)
+        {
+            int id;
+
+            printf("Enter Book ID: ");
+            scanf("%d", &id);
+
+            send(client, &id, sizeof(id), 0);
+
+            recv(client, buffer, sizeof(buffer), 0);
+
+            printf("%s\n", buffer);
+        }
+
+        else if (choice == 4)
+        {
+            int id;
+
+            printf("Enter Book ID: ");
+            scanf("%d", &id);
+
+            send(client, &id, sizeof(id), 0);
+
+            recv(client, buffer, sizeof(buffer), 0);
+
+            printf("%s\n", buffer);
+        }
+
+        else if (choice == 5)
+        {
+            recv(client, buffer, sizeof(buffer), 0);
+
+            printf("%s\n", buffer);
+        }
+    }
+
+    close(client);
+
+    return 0;
+}
+
